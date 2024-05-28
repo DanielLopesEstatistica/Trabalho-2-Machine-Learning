@@ -1,0 +1,275 @@
+
+```{r}
+pares_possiveis = expand.grid(letters, letters)
+pares_possiveis = paste0(pares_possiveis$Var1, pares_possiveis$Var2) |> sort()
+
+get_letter_pairs = function(word) {
+    substrings = substring(word, 1:(nchar(word) - 1), 2:nchar(word))
+    return(substrings)
+  }
+
+get_pairs <- function(vetor){
+    all_pairs <- unlist(lapply(vetor, get_letter_pairs))
+  
+    letter_counts <- table(all_pairs)/length(all_pairs)
+    
+    letter_counts = letter_counts[names(letter_counts) %in% pares_possiveis]
+  
+    complete_table <- as.data.frame(matrix(0, nrow = 1, ncol = length(pares_possiveis)))
+    colnames(complete_table) <- pares_possiveis
+  
+    complete_table[, names(letter_counts)] <- letter_counts
+  
+    return(complete_table)
+}
+
+lista = list()
+
+count = 0
+
+for(file in list.files("Linguagens")){
+  count = count + 1
+  language = substr(file, 1, nchar(file)-4)
+  print(language)
+
+  path = file.path("Linguagens", file)
+  dados = readLines(path) |> stringr::str_split(",") |> unlist() |> iconv(to="ASCII//TRANSLIT")
+  dados = dados[nchar(dados) > 1]
+  
+  linha = c(language, get_pairs(dados)) |> t() |> data.frame()
+  colnames(linha)[1] = "language"
+  lista[[count]] = linha
+}
+```
+
+
+```{r}
+dados = do.call(rbind, lista)
+linguagens = dados$language
+dados = dados[,-1]
+dados = sapply(dados, as.numeric) |> as.data.frame()
+dados = dados/rowSums(dados)
+rownames(dados) = linguagens
+write.csv(dados, "dados.csv")
+```
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+dados = read.csv("dados.csv")
+linguagens = dados$X
+dados = dados[,-1]
+rownames(dados) = linguagens
+```
+
+```{r}
+Espanhol = dados[rownames(dados) == "Spanish",] |> unlist() 
+Sueco = dados[rownames(dados) == "Swedish",] |> unlist() 
+
+x <- LETTERS
+y <- LETTERS |> rev()
+dadosLetras <- expand.grid(X=x, Y=y)
+Espanhol = cbind(dadosLetras, Espanhol)
+Sueco = cbind(dadosLetras, Sueco)
+
+dadosLetras = left_join(Espanhol, Sueco, by = c("X", "Y")) |> pivot_longer(cols = c(Espanhol, Sueco),
+                                                                           names_to = "lingua",
+                                                                           values_to = "valor")
+
+ggplot(data = dadosLetras, aes(x = X, y = Y |> rev(), fill = valor|> sqrt()))+
+  geom_tile()+
+  facet_wrap(lingua ~., scales = "free")+
+  scale_fill_gradient(low = "white", high = "red")+
+  guides(fill = FALSE)+
+  theme_classic()+
+  labs(x = "Segunda Letra", y = "Primeira Letra")
+```
+
+
+```{r}
+dados_pca = prcomp(dados)
+summary(dados_pca)
+factoextra::fviz_eig(dados_pca, addlabels = TRUE)
+
+dados_reduct = dados_pca$x[,1:17] |> as.data.frame()
+linguagens = rownames(dados)
+rownames(dados_reduct) = unlist(linguagens)
+
+explicVar = cumsum(dados_pca$sdev^2)/sum(dados_pca$sdev^2)
+explicVar = data.frame(Explicada = explicVar)
+colnames(explicVar) = "Explicada"
+explicVar$Label = (explicVar$Explicada*100) |> round()
+explicVar$Label = ifelse((explicVar$Label == 80), "80,0%", "")
+
+ggplot(explicVar, aes(x = 1:nrow(explicVar), y = Explicada, fill = "red"))+
+  geom_histogram(color = "black", stat = "identity")+
+  geom_point()+
+  geom_line()+
+  geom_text(aes(label = Label, y = Explicada + 0.05))+
+  geom_segment(aes(x = 1, y = 0.8, xend = 17), linetype = "longdash")+
+  theme_classic()+
+  labs(x = "Número de Componentes Principais", y = "Porcentagem de Variação Explicada",
+       title = "Scree plot da Análise de Componentes Principais")+
+  guides(fill = "none")+
+  scale_x_continuous(breaks = seq(1, 52, 2))
+```
+
+```{r}
+modelo_pre = hclust(dist(dados))
+
+modelo_pre |> plot()
+
+dados_pca <- prcomp(dados)
+
+pcs <- dados_pca$x
+loadings <- dados_pca$rotation
+
+num_components <- 17
+  
+dados_reduct = dados_pca$x[,1:num_components] |> as.data.frame()
+linguagens = rownames(dados)
+rownames(dados_reduct) = unlist(linguagens)
+
+reconstructed_data <- pcs[, 1:num_components] %*% t(loadings[, 1:num_components])
+
+reconstructed_data <- t(reconstructed_data)
+
+reconstructed_df <- as.data.frame(reconstructed_data) |> t() |> as.data.frame()
+
+row.names(reconstructed_df) = unlist(linguagens)
+
+modelo_pos <- hclust(dist(reconstructed_df)) 
+
+modelo_pos |> plot()
+
+df_comparacao = cbind(cutree(modelo_pre, 10), cutree(modelo_pos, 10)) |> as.data.frame()
+
+df_comparacao$comp = df_comparacao$V1 == df_comparacao$V2
+
+sum(df_comparacao$comp)
+```
+
+```{r}
+library(mclust)
+
+model.BIC = mclustBIC(dados_reduct, G = 1:20)
+model.ICL = mclustICL(dados_reduct, G = 1:20)
+
+#str(model.BIC)
+
+plot(model.BIC)
+plot(model.ICL)
+```
+
+```{r}
+model_with_8 = Mclust(dados_reduct, 12, modelNames = "VEI")
+#plot(model_with_8, what = "classification")
+
+modelo_total = Mclust(dados_reduct, 12, modelNames = "VII")
+#plot(model_with_10, what = "classification")
+
+# model_with_7 = Mclust(dados_reduct, 7, modelNames = "VII")
+# plot(model_with_7, what = "classification")
+```
+```{r}
+modelo = model_with_10
+
+for(i in 1:length(unique(modelo$classification))){
+  cluster = modelo$classification[modelo$classification == i]
+  print(cluster)
+}
+```
+```{r}
+library(covRobust)
+
+ruido = cov.nnve(dados_reduct, k = 12, pnoise = 0.10)
+
+linguagens[!ruido$classification]
+
+model.BIC = mclustBIC(dados_reduct,
+                      initialization = list(noise = (ruido$classification == 0)),
+                      G = 1:20)
+plot(model.BIC)
+
+model_without_noise = Mclust(dados_reduct, 8, modelNames = "VII",
+                      initialization = list(noise = (ruido$classification == 0)))
+```
+
+
+```{r}
+modelo = model_with_8
+for(i in unique(modelo$classification) |> sort()){
+  print(i)
+  cluster = modelo$classification[modelo$classification == i] |> names()
+  print(cluster)
+}
+
+#plot(modelo, what = "classification")
+```
+
+```{r}
+plotar = function(modelo){
+  df = modelo$classification |> as.data.frame()
+  n_cluster = length(unique(modelo$classification))
+  df$Linguagem = rownames(df)
+  colnames(df)[1] = "Cluster"
+  df$Cluster = factor(df$Cluster)
+  
+  keep_track = rep(0, n_cluster)
+  lugar = rep(0, nrow(df))
+  
+  for(i in nrow(df):1){
+    cluster = df$Cluster[i]
+    keep_track[cluster] = keep_track[cluster] + 1
+    lugar[i] = keep_track[cluster]
+  }
+  
+  df$lugar = lugar
+  
+  df$NPerCluster = keep_track[df$Cluster]
+  
+  df$Intercepto = 1
+  
+  df$ClusterName = df$Cluster |> as.character()
+  df$ClusterName[df$ClusterName != "0"] = paste0("Cluster ", df$ClusterName[df$ClusterName != 0])
+  df$ClusterName[df$ClusterName == "0"] = "Outliers"
+  
+  subtitulo = NULL
+  
+  if(any(modelo$classification == 0)){
+    n_cluster = n_cluster - 1
+    subtitulo = "Com remoção de ruído"
+  }
+  
+  titulo = paste0("Modelo com ", n_cluster, " clusters, do tipo ", modelo$modelName)
+  
+  ggplot(data = df)+
+    geom_bar(aes(x = Cluster, y = Intercepto, fill = Cluster), stat = "identity",
+             alpha = 0.3, color = "black")+
+    geom_text(aes(x = Cluster, label = Linguagem, y = lugar - 0.5),
+              size = 5, fontface = "bold")+
+    geom_text(aes(x = Cluster, label = ClusterName, y = NPerCluster + 0.5),
+              size = 7, fontface = "bold")+
+    guides(fill = FALSE)+
+    theme_classic()+
+    theme(axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          plot.title = element_text(hjust = 0.5, size = 22),
+          plot.subtitle = element_text(hjust = 0.5, size = 18))+
+    labs(title = titulo, subtitle = subtitulo)
+
+}
+
+plotar(modelo)
+```
+
+```{r}
+plotar(modelo_total)
+```
