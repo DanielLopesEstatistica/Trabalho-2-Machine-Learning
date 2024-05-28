@@ -1,0 +1,77 @@
+import pandas as pd
+from selenium import webdriver
+import time
+from bs4 import BeautifulSoup
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver import Firefox
+from webdriver_manager.firefox import GeckoDriverManager
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import requests
+from PIL import Image
+import os
+import csv
+import unicodedata
+
+browser = webdriver.Firefox(executable_path=GeckoDriverManager().install())
+
+url = "https://github.com/eymenefealtun/all-words-in-all-languages/tree/main/Afrikaans"
+
+browser.get(url)
+
+time.sleep(1)
+
+elementos = browser.find_elements(By.CSS_SELECTOR, ".PRIVATE_TreeView-item-content-text span")
+
+linguagens = []
+for elemento in elementos:
+    my_string = elemento.text
+    if "." in my_string or "_" in my_string:
+        next
+    else:
+        linguagens.append(my_string)
+        
+url_base = "https://raw.githubusercontent.com/eymenefealtun/all-words-in-all-languages/main/"
+
+def only_latin(text):
+    try:
+        for char in text[:1000]:
+            if not unicodedata.name(char).startswith(('LATIN', 'COMMON')) and char != ',' and char != '-' and char != "'":
+                return False
+        return True
+    except:
+        return False
+
+def limpar_string(input_string):
+    if(only_latin(input_string)):
+        input_string = input_string.replace(',', ', ')
+
+        cleaned_string = ''.join(char.lower() for char in input_string if char.isalpha() or char.isspace())
+
+        cleaned_words = list(set(cleaned_string.split()))
+
+    else:
+        print("Recusado por Caracteres")
+        cleaned_words = []
+        
+    return cleaned_words
+
+for linguagem in linguagens:
+    print(linguagem)
+    url = url_base + f"{linguagem}/{linguagem}.txt" 
+    time.sleep(1)
+    browser.get(url)
+    time.sleep(1)
+    palavras = browser.find_elements(By.CSS_SELECTOR, "pre")[0].text
+    palavras_limpas = limpar_string(palavras)
+    if len(palavras_limpas) > 100:
+        try:
+            csv_file = f"C:/Users/danie/OneDrive/Área de Trabalho/Materias Faculdade/Machine Learning/Trabalho 2/Linguagens/{linguagem}.csv"
+            with open(csv_file, 'w', newline='', encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow(palavras_limpas)
+        except:
+            pass
